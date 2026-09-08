@@ -1,1 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Exam Retraining System — AI-driven (Gemini)</title>
 
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+<style>
+/* Styling (kept concise and consistent) */
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); margin:0;padding:20px;min-height:100vh;}
+.container{max-width:900px;margin:0 auto;background:white;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.2);overflow:hidden;}
+nav{background:#2c3e50;padding:15px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+nav button{background:#3498db;color:white;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;font-size:14px;transition:background 0.3s;}
+nav button:hover{background:#2980b9;}nav button.active{background:#27ae60;}
+.content{padding:30px;min-height:400px}
+.section{display:none}.section.active{display:block}
+.message{padding:12px;margin:15px 0;border-radius:4px;display:none}
+.message.show{display:block}.message.success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}.message.error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}.message.info{background:#d1ecf1;color:#0c5460;border:1px solid #bee5eb}
+.progress-bar{background:#ecf0f1;height:30px;border-radius:4px;margin:20px 0;display:flex;align-items:center;padding:0 10px;font-weight:bold;color:#2c3e50}
+.question-block{background:#f8f9fa;padding:20px;border-radius:4px;margin:20px 0;border-left:4px solid #3498db}
+.options{display:flex;flex-direction:column;gap:12px}
+.option{display:flex;align-items:flex-start;padding:12px;background:white;border:2px solid #bdc3c7;border-radius:4px;cursor:pointer}
+.option:hover{border-color:#3498db;background:#ecf0f1}.option-text{flex:1}
+.score-display{background:#d4edda;color:#155724;padding:20px;border-radius:4px;text-align:center;font-size:20px;font-weight:bold;margin:20px 0}
+.accordion-button{width:100%;text-align:left;padding:15px;background:#ecf0f1;border:1px solid #bdc3c7;border-radius:4px;cursor:pointer;font-weight:bold;margin-top:10px}
+.accordion-panel{display:none;padding:15px;background:white;border:1px solid #bdc3c7;border-top:none;border-radius:0 0 4px 4px}
+.accordion-panel.show{display:block}
+.parse-stats{background:#e8f4f8;padding:12px;border-radius:4px;margin:10px 0;font-size:13px;color:#2c3e50}
+textarea[readonly]{background:#f8f9fa;border:1px solid #ddd;padding:10px;border-radius:4px;width:100%;min-height:140px;resize:vertical}
+.small{font-size:13px;color:#666;margin-top:6px}
+.note{background:#fff3cd;border-left:3px solid #ffc107;padding:8px;border-radius:4px;margin-top:8px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+  <nav>
+    <button class="nav-btn active" data-section="upload">Upload</button>
+    <button class="nav-btn" data-section="exam">Exam</button>
+    <button class="nav-btn" data-section="history">History</button>
+  </nav>
+
+  <div class="content">
+    <!-- UPLOAD -->
+    <div id="upload" class="section active">
+      <h1>Upload Exam Document</h1>
+      <p>Upload a PDF (text-based or scanned) or an image to extract raw text with <strong>Google Vision</strong> and send it to <strong>Gemini</strong> for question extraction.</p>
+
+      <div class="file-upload-group">
+        <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png" aria-label="Select file" />
+        <button id="processBtn">Analyze with Gemini</button>
+      </div>
+
+      <!-- Processed files dropdown & actions -->
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <select id="processedFileSelect" style="min-width:300px"><option value="">(processed files)</option></select>
+        <button id="removeFileBtn" style="padding:8px;border-radius:4px;">Remove selected</button>
+      </div>
+
+      <!-- Google & Gemini API Keys + model controls -->
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+        <input id="googleKey" type="password" placeholder="Google Cloud API Key (Vision; required)" value="AIzaSyDxPJjvwRtE9xQ11YsT3AFDEr8be0EDx30" style="flex:1;padding:8px;border-radius:4px;border:1px solid #bdc3c7" autocomplete="off"/>
+        <input id="geminiKey" type="password" placeholder="Gemini API Key (required; kept in memory)" value="AIzaSyCMeEfXLwk2QGRoN2rRgkPr9USrTY0fd4c" style="width:340px;padding:8px;border-radius:4px;border:1px solid #bdc3c7" autocomplete="off"/>
+        <button id="listModelsBtn" style="padding:8px;border-radius:4px;">List Models</button>
+        <select id="modelSelect" style="min-width:260px"><option value="models/gemini-2.5-flash">(default)</option></select>
+
+        <!-- Alternatives per question -->
+        <label style="display:flex;align-items:center;gap:8px;margin-left:8px;">
+          <span class="small">Alternatives per question:</span>
+          <input id="altCount" type="number" min="0" value="1" style="width:80px;padding:8px;border-radius:4px;border:1px solid #bdc3c7"/>
+        </label>
+      </div>
+      <div class="small">Tip: click <strong>List Models</strong> to see supported models; set how many factual alternatives to generate per question.</div>
+
+      <h2>AI Analysis Prompt (read-only) 🔎</h2>
+      <textarea id="aiPrompt" readonly></textarea>
+
+      <div id="uploadMsg" class="message"></div>
+
+      <h2>Parsing Preview</h2>
+      <div id="parsePreview" class="parse-stats">No results yet.</div>
+      <div class="note">Parsing preview shows the AI-returned JSON and a readable preview. The AI must return JSON exactly in the required format (see prompt).</div>
+    </div>
+
+    <!-- EXAM -->
+    <div id="exam" class="section">
+      <h1>Exam</h1>
+      <div class="controls">
+        <label for="questionLimit">Questions to answer:</label>
+        <input type="number" id="questionLimit" min="1" value="5" style="width:80px;margin-left:8px"/>
+        <label style="margin-left:12px"><input type="checkbox" id="randomizeQuestions" checked /> Randomize questions</label>
+        <label style="margin-left:12px"><input type="checkbox" id="randomizeOptions" checked /> Randomize options</label>
+        <label style="margin-left:12px"><input type="checkbox" id="preferAlternatives" /> Prefer alternatives during retest</label>
+
+        <!-- Choose a processed file for exam -->
+        <select id="examFileSelect" style="min-width:240px;margin-left:12px">
+          <option value="">(Select processed file)</option>
+        </select>
+
+        <button id="startExamBtn" style="margin-left:12px;">Start Exam</button>
+        <div class="small">Choose a processed file to retest from its parsed questions. Check "Prefer alternatives" to randomly replace originals with alternatives when available.</div>
+      </div>
+
+      <div id="examContent"></div>
+      <div id="examMsg" class="message"></div>
+    </div>
+
+    <!-- HISTORY -->
+    <div id="history" class="section">
+      <h1>Exam History</h1>
+      <div id="historyContent" class="empty-state">No exam attempts yet.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ======================
+   FIXED GEMINI PROMPT (SEND EXACTLY)
+   - Includes base instructions about alternatives; numeric count is appended at call time.
+   ====================== */
+const GEMINI_PROMPT = `You are an AI exam analysis engine.
+
+The input is raw text from an academic PDF and may contain explanations, headings, and review material.
+
+Extract only valid exam questions and their answer options, then determine the correct answer and provide a concise explanation using your own knowledge.
+
+A question is valid only if:
+- The stem is interrogative.
+- It has at least two answer options.
+- Answer options appear before any explanation text in the source.
+
+Do not treat explanations, definitions, headings, summaries, or review statements as questions.
+
+Options may span multiple lines and may not use A/B/C/D labels.
+
+For each valid question:
+- Identify the most accurate option as correct_answer.
+- Provide a clear, concise explanation justifying why that option is correct.
+
+Additionally, if requested, for each valid question generate factual alternative questions (not dummy) that target the same or a closely related concept. Each alternative must:
+- Be factual and grounded in domain knowledge.
+- Include fields: "question", "options" (>=2), "correct_answer" (must be present in options), and "explanation" (must explain why correct is correct and why other options are incorrect).
+- Be returned inside an "alternatives" array belonging to the corresponding main question.
+
+Return JSON only, strictly in the formats below (allowing an optional "alternatives" array per question):
+
+[
+  {
+    "question": "Question text",
+    "options": ["Option 1", "Option 2"],
+    "correct_answer": "Exact option text",
+    "explanation": "Brief, accurate explanation",
+    "alternatives": [
+      {
+        "question": "Alternative question text",
+        "options": ["Alt1","Alt2"],
+        "correct_answer": "Alt2",
+        "explanation": "Why alt2 is correct and alt1 is incorrect"
+      }
+    ]
+  }
+]
+
+Exclude anything that does not clearly meet these rules.`;
+
+/* Put prompt into read-only textarea */
+document.getElementById('aiPrompt').value = GEMINI_PROMPT;
+
+/* Utilities */
+const $ = id => document.getElementById(id);
+const showMessage = (id, text, type='info') => {
+  const el = $(id);
+  el.textContent = text;
+  el.className = `message show ${type}`;
+};
+const hideMessage = id => { $(id).classList.remove('show'); };
+const prettyJSON = obj => JSON.stringify(obj, null, 2);
+
+/* ======================
+   Processed-files storage helpers
+   - Each stored file entry: { id, name, size, lastModified, dateProcessed, questions: [...] }
+   - Each question object: { question, options, correctAnswerText, correctAnswerIndex, explanation, isAlternative?, sourceQuestion? }
+   ====================== */
+function getProcessedFiles() {
+  return JSON.parse(localStorage.getItem('processedFiles') || '[]');
+}
+function saveProcessedFile(fileObj) {
+  // Unique by name+size (replace existing same file)
+  const arr = getProcessedFiles().filter(f => !(f.name === fileObj.name && f.size === fileObj.size));
+  arr.unshift(fileObj);
+  localStorage.setItem('processedFiles', JSON.stringify(arr));
+  renderProcessedFiles();
+}
+function removeProcessedFileById(id) {
+  const arr = getProcessedFiles().filter(f => f.id !== id);
+  localStorage.setItem('processedFiles', JSON.stringify(arr));
+  renderProcessedFiles();
+}
+function renderProcessedFiles() {
+  const files = getProcessedFiles();
+  const up = $('processedFileSelect');
+  up.innerHTML = '<option value="">(processed files)</option>';
+  files.forEach(f => up.appendChild(new Option(`${f.name} — ${f.questions?.length ?? 0} q`, f.id)));
+
+  const ex = $('examFileSelect');
+  ex.innerHTML = '<option value="">(Select processed file)</option>';
+  files.forEach(f => ex.appendChild(new Option(`${f.name} — ${f.questions?.length ?? 0} q`, f.id)));
+}
+
+/* Small helper: escape HTML if needed */
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* ===========================
+   Event: file selected
+   - Prevent processing if same filename+size already processed
+   =========================== */
+$('fileInput').addEventListener('change', () => {
+  const file = $('fileInput').files[0];
+  if (!file) return;
+  const exists = getProcessedFiles().some(f => f.name === file.name && f.size === file.size);
+  if (exists) {
+    showMessage('uploadMsg', 'This file has already been processed — choose it from the dropdown to retest.', 'info');
+    $('fileInput').value = ''; // clear selection
+    renderProcessedFiles();
+    return;
+  }
+  // keep history (do not clear processedFiles). Clear transient 'questions' so UI starts clean.
+  localStorage.removeItem('questions');
+  $('parsePreview').innerHTML = 'No results yet.';
+  showMessage('uploadMsg', 'New file selected — ready to process.', 'info');
+});
+
+/* Remove processed file button */
+$('removeFileBtn').addEventListener('click', () => {
+  const sel = $('processedFileSelect').value;
+  if (!sel) { showMessage('uploadMsg','Select a processed file to remove.', 'error'); return; }
+  removeProcessedFileById(sel);
+  showMessage('uploadMsg','Processed file removed.', 'success');
+});
+
+/* ===========================
+   Google Vision OCR utilities
+   =========================== */
+async function ocrImageWithVision({ googleApiKey, base64Image }) {
+  if (!googleApiKey) throw new Error('Missing Google API key.');
+  const url = `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(googleApiKey)}`;
+  const payload = {
+    requests: [
+      {
+        image: { content: base64Image },
+        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }]
+      }
+    ]
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Vision API failed (${res.status}): ${text.slice(0,1000)}`);
+  }
+  const data = await res.json();
+  const annotation = data?.responses?.[0];
+  const text = annotation?.fullTextAnnotation?.text || '';
+  return text;
+}
+
+/* Extract raw text from PDF using pdf.js */
+async function extractPDFRawText(file, googleApiKey) {
+  if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js not loaded — ensure CDN is available.');
+  try {
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    let fullText = '';
+    const totalPages = pdf.numPages;
+
+    for (let p = 1; p <= totalPages; p++) {
+      showMessage('uploadMsg', `Processing page ${p} of ${totalPages}...`, 'info');
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const pageTextFromPDF = content.items.map(item => (item.str || '').trim()).join(' ').trim();
+
+      if (pageTextFromPDF && pageTextFromPDF.length > 30) {
+        fullText += pageTextFromPDF + '\n\n';
+      } else {
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext('2d');
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const base64 = dataUrl.split(',')[1];
+
+        showMessage('uploadMsg', `Running Vision OCR on page ${p}...`, 'info');
+        const ocrText = await ocrImageWithVision({ googleApiKey, base64Image: base64 });
+        fullText += (ocrText || '') + '\n\n';
+      }
+    }
+
+    return fullText.trim();
+  } catch (err) {
+    throw new Error(`PDF extraction failed: ${err.message}`);
+  }
+}
+
+/* Extract raw text from an image file using Vision API */
+async function extractImageRawText(file, googleApiKey) {
+  try {
+    showMessage('uploadMsg', 'Reading image and running Vision OCR...', 'info');
+    const dataUrl = await readFileAsDataURL(file);
+    const base64 = dataUrl.split(',')[1];
+    const text = await ocrImageWithVision({ googleApiKey, base64Image: base64 });
+    return text.trim();
+  } catch (err) {
+    throw new Error(`Image OCR failed: ${err.message}`);
+  }
+}
+
+/* Helper to read file as Data URL */
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = err => reject(err);
+    fr.readAsDataURL(file);
+  });
+}
+
+/* ======================
+   Chunking (size-based; max 12,000 chars)
+   ====================== */
+const MAX_CHUNK_CHARS = 12000;
+function chunkTextBySize(text, maxChars = MAX_CHUNK_CHARS) {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += maxChars) {
+    chunks.push(text.slice(i, i + maxChars));
+  }
+  return chunks;
+}
+
+/* ======================
+   Model listing and compatibility helpers
+   ====================== */
+$('listModelsBtn').addEventListener('click', async () => {
+  const key = $('geminiKey').value.trim();
+  if (!key) { showMessage('uploadMsg','Enter Gemini API key first', 'error'); return; }
+  showMessage('uploadMsg', 'Listing models...', 'info');
+  try {
+    const models = await listModels(key);
+    const sel = $('modelSelect');
+    sel.innerHTML = '<option value="">(auto)</option>';
+    models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.name;
+      opt.textContent = `${m.name}${m.displayName ? ' — ' + m.displayName : ''}`;
+      sel.appendChild(opt);
+    });
+    showMessage('uploadMsg', `Found ${models.length} models. Choose one or leave (auto).`, 'success');
+  } catch (err) {
+    showMessage('uploadMsg', err.message || String(err), 'error');
+  }
+});
+
+async function listModels(geminiApiKey) {
+  if (!geminiApiKey) throw new Error('Missing Gemini API key.');
+  const url = `https://generativelanguage.googleapis.com/v1/models?key=${encodeURIComponent(geminiApiKey)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`ListModels failed (${res.status}): ${txt.slice(0,1000)}`);
+  }
+  const data = await res.json();
+  return data.models || [];
+}
+
+/* Call model with fallback (now accepts promptText for dynamic instructions) */
+async function callModelWithFallback({ requestedModel, geminiApiKey, promptText }) {
+  if (!geminiApiKey) throw new Error('Missing Gemini API key.');
+  const candidateModels = requestedModel && requestedModel.trim() ? [requestedModel] : [
+    'models/gemini-1.5-flash',
+    'models/gemini-1.5',
+    'models/text-bison-001'
+  ];
+  const methods = ['generateContent','generateMessage','generateText','generate'];
+  const errors = [];
+
+  for (const modelName of candidateModels) {
+    for (const method of methods) {
+      const url = `https://generativelanguage.googleapis.com/v1/${modelName}:${method}?key=${encodeURIComponent(geminiApiKey)}`;
+      try {
+        const body = {
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: promptText }]
+            }
+          ],
+          generationConfig: { temperature: 0.1 }
+        };
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          errors.push(`${modelName}:${method} -> ${res.status}: ${txt.slice(0,500)}`);
+          continue;
+        }
+        const json = await res.json();
+        return { json, usedModel: modelName, usedMethod: method };
+      } catch (err) {
+        errors.push(`${modelName}:${method} -> ${err.message}`);
+        continue;
+      }
+    }
+  }
+  throw new Error('All generation attempts failed:\n' + errors.join('\n'));
+}
+
+/* ======================
+   Gemini analysis wrapper (robust) — adds altCount to instructions
+   ====================== */
+async function analyzeWithGemini({ geminiApiKey, chunkText, modelName, altCount = 0 }) {
+  // Build additional instruction about alternatives (with numeric guidance)
+  const altInstruction = altCount > 0 ? `
+Generate up to ${altCount} factual alternative questions for EACH valid question found. For each alternative, include "question", "options" (>=2), "correct_answer" (must exactly match one option), and "explanation" which states why the correct option is correct and why the other options are incorrect. Add these alternatives as an "alternatives" array inside the main question object.` : '';
+
+  const fullPrompt = GEMINI_PROMPT + "\n\n" + altInstruction + "\n\n" + chunkText;
+
+  const result = await callModelWithFallback({
+    requestedModel: modelName,
+    geminiApiKey,
+    promptText: fullPrompt
+  });
+
+  const data = result.json;
+
+  // Flexible extraction to handle different response shapes
+  let contentText = '';
+
+  // Common shapes
+  const candidate = data?.candidates?.[0];
+  if (candidate) {
+    // try multiple paths
+    if (candidate.content?.parts?.length) {
+      contentText = candidate.content.parts.map(p => p.text || '').join('\n');
+    } else if (candidate.output?.length) {
+      // some older shapes
+      contentText = candidate.output.map(o => (o.content || []).map(c => c.text || '').join('')).join('\n');
+    } else if (candidate.content?.text) {
+      contentText = candidate.content.text;
+    } else if (candidate.text) {
+      contentText = candidate.text;
+    }
+  }
+
+  // fallback to top-level fields
+  if (!contentText && typeof data === 'string') contentText = data;
+  if (!contentText && data && data.outputText) contentText = data.outputText;
+
+  if (!contentText) {
+    // as last resort stringify the whole response and search for array
+    contentText = JSON.stringify(data);
+  }
+
+  const cleanedText = stripMarkdownFences(contentText);
+  const jsonText = extractFirstJsonArrayFromText(cleanedText);
+  if (!jsonText) {
+    throw new Error('AI did not return a JSON array. Raw output: ' + cleanedText.slice(0, 1000));
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    throw new Error('AI JSON parsing failed: ' + err.message + '\nRaw JSON text:\n' + jsonText.slice(0, 2000));
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('AI returned JSON but it is not an array.');
+  }
+
+  return parsed;
+}
+
+/* Balanced JSON array extraction (safer than first/last index) */
+function extractFirstJsonArrayFromText(content) {
+  const start = content.indexOf('[');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < content.length; i++) {
+    if (content[i] === '[') depth++;
+    else if (content[i] === ']') {
+      depth--;
+      if (depth === 0) return content.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/* Strip triple-backtick fences (more robust) */
+function stripMarkdownFences(text) {
+  return text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+}
+
+/* ======================
+   Chunked processing wrapper (passes altCount)
+   ====================== */
+async function analyzeTextInChunks({ geminiApiKey, rawText, modelName, altCount = 0 }) {
+  const chunks = chunkTextBySize(rawText, MAX_CHUNK_CHARS);
+  const total = chunks.length;
+  const collected = [];
+  for (let i = 0; i < total; i++) {
+    const idx = i + 1;
+    const chunk = chunks[i];
+    showMessage('uploadMsg', `Analyzing chunk ${idx} of ${total}...`, 'info');
+    try {
+      const arr = await analyzeWithGemini({ geminiApiKey, chunkText: chunk, modelName, altCount });
+      if (Array.isArray(arr) && arr.length > 0) collected.push(arr);
+      else console.warn(`Chunk ${idx} returned empty array; skipping.`);
+    } catch (err) {
+      console.error(`Chunk ${idx} failed:`, err);
+      showMessage('uploadMsg', `Warning: chunk ${idx} failed — continuing with remaining chunks.`, 'info');
+    }
+  }
+  return collected;
+}
+
+/* ======================
+   Validation & merging rules
+   - Normalizes text, validates alternatives, dedupe
+   ====================== */
+function validateAndMergeAIResponses(responsesArrayOfArrays) {
+  const flattened = responsesArrayOfArrays.flat();
+  const validated = [];
+  const seenQuestions = new Set();
+
+  function normalizeText(s) {
+    return String(s || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isValidItem(item) {
+    if (!item || typeof item !== 'object') return false;
+    if (typeof item.question !== 'string') return false;
+    if (!Array.isArray(item.options) || item.options.length < 2) return false;
+    if (!('correct_answer' in item)) return false;
+    if (!('explanation' in item)) return false;
+    if (item.correct_answer !== null && typeof item.correct_answer !== 'string') return false;
+    if (typeof item.explanation !== 'string') return false;
+    // ensure correct answer matches one of the provided options
+    if (item.correct_answer !== null && !item.options.some(opt => normalizeText(opt) === normalizeText(item.correct_answer))) return false;
+    return true;
+  }
+
+  for (const item of flattened) {
+    if (!isValidItem(item)) continue;
+    const qText = normalizeText(item.question);
+    if (seenQuestions.has(qText)) continue;
+    seenQuestions.add(qText);
+
+    const normalizedOptions = item.options.map(o => normalizeText(o));
+    const correctOptNormalized = item.correct_answer === null ? null : normalizeText(item.correct_answer);
+    const correctIdx = (correctOptNormalized === null) ? -1 : normalizedOptions.findIndex(o => o === correctOptNormalized);
+
+    validated.push({
+      question: qText,
+      options: normalizedOptions,
+      correctAnswerText: correctOptNormalized,
+      correctAnswerIndex: correctIdx,
+      explanation: item.explanation,
+      isAlternative: !!item.isAlternative // if provided by AI (not necessary)
+    });
+
+    // handle nested alternatives
+    if (Array.isArray(item.alternatives) && item.alternatives.length > 0) {
+      for (const alt of item.alternatives) {
+        if (!isValidItem(alt)) continue;
+        const altQ = normalizeText(alt.question);
+        if (seenQuestions.has(altQ)) continue;
+        seenQuestions.add(altQ);
+
+        const altOptions = alt.options.map(o => normalizeText(o));
+        const altCorrect = alt.correct_answer === null ? null : normalizeText(alt.correct_answer);
+        const altIdx = (altCorrect === null) ? -1 : altOptions.findIndex(o => o === altCorrect);
+
+        validated.push({
+          question: altQ,
+          options: altOptions,
+          correctAnswerText: altCorrect,
+          correctAnswerIndex: altIdx,
+          explanation: alt.explanation,
+          isAlternative: true,
+          sourceQuestion: qText
+        });
+      }
+    }
+  }
+
+  return validated;
+}
+
+/* ======================
+   Processing the upload (main handler)
+   ====================== */
+$('processBtn').addEventListener('click', async () => {
+  const file = $('fileInput').files[0];
+  if (!file) {
+    showMessage('uploadMsg', 'Please select a file.', 'error');
+    return;
+  }
+
+  // Prevent processing a file that's already processed (extra safety)
+  if (getProcessedFiles().some(f => f.name === file.name && f.size === file.size)) {
+    showMessage('uploadMsg', 'This file was already processed. Choose it from the dropdown to retest.', 'error');
+    return;
+  }
+
+  const googleKey = $('googleKey').value.trim();
+  const geminiKey = $('geminiKey').value.trim();
+  const selectedModel = $('modelSelect').value.trim();
+  const altCount = Math.max(0, parseInt($('altCount').value) || 0);
+
+  if (!googleKey) {
+    showMessage('uploadMsg', 'Please enter your Google Cloud API key (Vision).', 'error');
+    return;
+  }
+  if (!geminiKey) {
+    showMessage('uploadMsg', 'Please enter your Gemini API key.', 'error');
+    return;
+  }
+
+  $('processBtn').disabled = true;
+  showMessage('uploadMsg', 'Extracting text (Vision)...', 'info');
+
+  try {
+    let rawText = '';
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      rawText = await extractPDFRawText(file, googleKey);
+    } else {
+      rawText = await extractImageRawText(file, googleKey);
+    }
+
+    if (!rawText || rawText.trim().length === 0) {
+      showMessage('uploadMsg', 'No text extracted from file.', 'error');
+      $('processBtn').disabled = false;
+      return;
+    }
+
+    showMessage('uploadMsg', 'Preparing chunks for Gemini analysis...', 'info');
+    const chunkedResponses = await analyzeTextInChunks({ geminiApiKey: geminiKey, rawText, modelName: selectedModel, altCount });
+
+    if (!chunkedResponses || chunkedResponses.length === 0) {
+      showMessage('uploadMsg', 'Gemini returned no valid JSON from any chunk.', 'error');
+      $('processBtn').disabled = false;
+      return;
+    }
+
+    const mergedValidated = validateAndMergeAIResponses(chunkedResponses);
+
+    if (mergedValidated.length === 0) {
+      showMessage('uploadMsg', 'No valid questions after merging and validation.', 'error');
+      $('processBtn').disabled = false;
+      return;
+    }
+
+    // Save as a processed file entry
+    const fileEntry = {
+      id: `${Date.now()}_${file.name}`,
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      dateProcessed: new Date().toLocaleString(),
+      questions: mergedValidated
+    };
+    saveProcessedFile(fileEntry);
+
+    // Also keep 'questions' key for legacy behavior
+    localStorage.setItem('questions', JSON.stringify(mergedValidated));
+    showMessage('uploadMsg', `✓ Parsed and saved ${mergedValidated.length} unique questions for "${file.name}".`, 'success');
+
+    showParsePreview(mergedValidated, chunkedResponses, rawText);
+    $('processBtn').disabled = false;
+  } catch (err) {
+    console.error(err);
+    showMessage('uploadMsg', err.message || String(err), 'error');
+    $('processBtn').disabled = false;
+  }
+});
+
+/* ======================
+   Parsing preview (safe rendering)
+   ====================== */
+function showParsePreview(validated, aiRawArray, rawText) {
+  const container = $('parsePreview');
+  container.innerHTML = '';
+
+  const title = document.createElement('h3');
+  title.textContent = `Parsed Questions (${validated.length})`;
+  container.appendChild(title);
+
+  const stats = document.createElement('div');
+  stats.className = 'parse-stats';
+  const withAnswers = validated.filter(q => q.correctAnswerIndex >= 0).length;
+  stats.textContent = `Total: ${validated.length} questions | Answers detected: ${withAnswers}`;
+  container.appendChild(stats);
+
+  // Human-friendly preview of first 10 questions (safe insertion)
+  validated.slice(0, 10).forEach((q, i) => {
+    const qDiv = document.createElement('div');
+    qDiv.style.background = '#f8f9fa';
+    qDiv.style.padding = '12px';
+    qDiv.style.margin = '12px 0';
+    qDiv.style.borderLeft = '3px solid #3498db';
+    qDiv.style.borderRadius = '4px';
+
+    const qText = document.createElement('p');
+    qText.style.fontWeight = 'bold';
+    qText.textContent = `Q${i+1}${q.isAlternative ? ' (alt)' : ''}: ${q.question}`;
+    qDiv.appendChild(qText);
+
+    if (q.isAlternative && q.sourceQuestion) {
+      const src = document.createElement('div');
+      src.className = 'small';
+      src.textContent = `Source: ${q.sourceQuestion}`;
+      qDiv.appendChild(src);
+    }
+
+    q.options.forEach((opt, idx) => {
+      const li = document.createElement('div');
+      li.textContent = (idx === q.correctAnswerIndex ? '✓ ' : '• ') + opt;
+      li.style.marginLeft = '10px';
+      li.style.color = idx === q.correctAnswerIndex ? '#27ae60' : '#333';
+      qDiv.appendChild(li);
+    });
+
+    if (q.explanation) {
+      const expl = document.createElement('div');
+      expl.className = 'note';
+      const st = document.createElement('strong'); st.textContent = 'Explanation: ';
+      expl.appendChild(st);
+      expl.appendChild(document.createTextNode(q.explanation));
+      qDiv.appendChild(expl);
+    }
+
+    container.appendChild(qDiv);
+  });
+
+  // Full JSON preview (the combined raw arrays from all chunks)
+  const rawJSONPreview = document.createElement('pre');
+  rawJSONPreview.style.marginTop = '12px';
+  rawJSONPreview.style.maxHeight = '240px';
+  rawJSONPreview.style.overflow = 'auto';
+  rawJSONPreview.textContent = prettyJSON(aiRawArray);
+  container.appendChild(rawJSONPreview);
+}
+
+/* ================
+   Exam functionality (uses processed file selection when present)
+   - Includes "Prefer alternatives" behavior (50% chance per source question)
+   ================ */
+let currentExam = [];
+let currentIdx = 0;
+let currentScore = 0;
+let userAnswers = [];
+
+$('startExamBtn').addEventListener('click', () => {
+  const limit = Math.max(1, parseInt($('questionLimit').value) || 5);
+  const selId = $('examFileSelect').value;
+  let stored;
+
+  if (selId) {
+    const fileObj = getProcessedFiles().find(f => f.id === selId);
+    if (!fileObj || !fileObj.questions || fileObj.questions.length === 0) {
+      showMessage('examMsg', 'Selected file has no questions. Choose another file.', 'error');
+      return;
+    }
+    stored = fileObj.questions;
+  } else {
+    stored = JSON.parse(localStorage.getItem('questions') || '[]');
+  }
+
+  if (!stored || stored.length === 0) {
+    showMessage('examMsg', 'No questions available. Upload & analyze a document first.', 'error');
+    return;
+  }
+
+  const preferAlts = !!$('preferAlternatives').checked;
+
+  // Create a mapping from source -> alternatives
+  const altMap = {};
+  stored.forEach(q => {
+    if (q.isAlternative && q.sourceQuestion) {
+      altMap[q.sourceQuestion] = altMap[q.sourceQuestion] || [];
+      altMap[q.sourceQuestion].push(q);
+    }
+  });
+
+  // Base originals list (questions that are not marked as alternatives)
+  let originals = stored.filter(q => !q.isAlternative);
+  // Fallback: if no explicit originals (rare), use all stored
+  if (originals.length === 0) originals = [...stored];
+
+  // Build effective pool: replace some originals with an alt if available and preferred
+  let pool = originals.map(orig => {
+    if (preferAlts && altMap[orig.question] && altMap[orig.question].length > 0) {
+        const alts = altMap[orig.question];
+        const chosenAlt = alts[Math.floor(Math.random() * alts.length)];
+        return chosenAlt;
+    }
+    return orig;
+  });
+
+  if ($('randomizeQuestions').checked) pool = shuffle(pool);
+  const chosen = pool.slice(0, Math.min(limit, pool.length));
+
+  currentExam = chosen.map(q => {
+    let options = [...q.options];
+    let correctIdx = q.correctAnswerIndex;
+
+    if ($('randomizeOptions').checked) {
+      const result = shuffleOptions(options, correctIdx);
+      options = result.shuffledOptions;
+      correctIdx = result.correctAnswerNewIdx;
+    }
+
+    return {
+      question: q.question,
+      options,
+      correctAnswerIdx: correctIdx,
+      feedback: q.explanation || '',
+      isAlternative: !!q.isAlternative,
+      sourceQuestion: q.sourceQuestion || null
+    };
+  });
+
+  currentIdx = 0;
+  currentScore = 0;
+  userAnswers = [];
+  renderQuestion();
+  show('exam');
+});
+
+function renderQuestion() {
+  const container = $('examContent');
+  container.innerHTML = '';
+  hideMessage('examMsg');
+
+  if (!currentExam || currentExam.length === 0) {
+    container.textContent = 'No exam loaded.';
+    return;
+  }
+
+  if (currentIdx >= currentExam.length) {
+    renderResults();
+    return;
+  }
+
+  const q = currentExam[currentIdx];
+
+  const progress = document.createElement('div');
+  progress.className = 'progress-bar';
+  progress.textContent = `Question ${currentIdx + 1} of ${currentExam.length}`;
+  container.appendChild(progress);
+
+  const qBlock = document.createElement('div');
+  qBlock.className = 'question-block';
+  const qText = document.createElement('div');
+  qText.className = 'question-text';
+  qText.textContent = q.question + (q.isAlternative ? ' (alternative)' : '');
+  qBlock.appendChild(qText);
+
+  if (q.isAlternative && q.sourceQuestion) {
+    const src = document.createElement('div');
+    src.className = 'small';
+    src.textContent = `Source: ${q.sourceQuestion}`;
+    qBlock.appendChild(src);
+  }
+
+  const optionsDiv = document.createElement('div');
+  optionsDiv.className = 'options';
+
+  q.options.forEach((opt, idx) => {
+    const label = document.createElement('label');
+    label.className = 'option';
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'answer';
+    radio.value = String(idx);
+    radio.style.marginRight = '12px';
+    const span = document.createElement('span');
+    span.className = 'option-text';
+    span.textContent = opt;
+    label.appendChild(radio);
+    label.appendChild(span);
+    optionsDiv.appendChild(label);
+
+    radio.addEventListener('change', () => {
+      $('nextBtn').disabled = false;
+    });
+  });
+
+  qBlock.appendChild(optionsDiv);
+  container.appendChild(qBlock);
+
+  const nextBtn = document.createElement('button');
+  nextBtn.id = 'nextBtn';
+  nextBtn.textContent = currentIdx === currentExam.length - 1 ? 'Finish' : 'Next';
+  nextBtn.disabled = true;
+  nextBtn.style.marginTop = '20px';
+  nextBtn.addEventListener('click', () => {
+    const selected = document.querySelector('input[name="answer"]:checked');
+    if (!selected) {
+      showMessage('examMsg', 'Please select an answer.', 'error');
+      return;
+    }
+    const selectedIdx = Number(selected.value);
+    const correctIdx = q.correctAnswerIdx;
+
+    userAnswers.push({
+      questionIdx: currentIdx,
+      selectedIdx,
+      correctIdx,
+      isCorrect: selectedIdx === correctIdx
+    });
+
+    if (selectedIdx === correctIdx) currentScore++;
+
+    currentIdx++;
+    renderQuestion();
+  });
+
+  container.appendChild(nextBtn);
+}
+
+function renderResults() {
+  const container = $('examContent');
+  container.innerHTML = '';
+  const pct = currentExam.length > 0 ? Math.round(currentScore / currentExam.length * 100) : 0;
+
+  const scoreDiv = document.createElement('div');
+  scoreDiv.className = 'score-display';
+  scoreDiv.innerHTML = `<div>Exam Complete!</div><div style="font-size:32px;margin:10px 0">${currentScore}/${currentExam.length}</div><div>${pct}%</div>`;
+  container.appendChild(scoreDiv);
+
+  const detailsDiv = document.createElement('div');
+  const detailsTitle = document.createElement('h3');
+  detailsTitle.textContent = 'Summary (Full details in History)';
+  detailsDiv.appendChild(detailsTitle);
+
+  currentExam.forEach((q, idx) => {
+    const detail = document.createElement('div');
+    detail.style.background = '#f8f9fa';
+    detail.style.padding = '12px';
+    detail.style.margin = '10px 0';
+    detail.style.borderRadius = '4px';
+    detail.style.borderLeft = q.correctAnswerIdx >= 0 ? '3px solid #27ae60' : '3px solid #e74c3c';
+
+    const qText = document.createElement('p');
+    qText.style.fontWeight = 'bold';
+    qText.textContent = `Q${idx+1}: ${q.question}` + (q.isAlternative ? ' (alternative)' : '');
+    detail.appendChild(qText);
+
+    if (q.isAlternative && q.sourceQuestion) {
+      const src = document.createElement('div');
+      src.className = 'small';
+      src.textContent = `Source: ${q.sourceQuestion}`;
+      detail.appendChild(src);
+    }
+
+    const correct = q.correctAnswerIdx >= 0 ? q.options[q.correctAnswerIdx] : null;
+    if (correct) {
+      const ansText = document.createElement('p');
+      ansText.className = 'feedback-correct';
+      ansText.textContent = `Correct: ${correct}`;
+      detail.appendChild(ansText);
+    }
+
+    detailsDiv.appendChild(detail);
+  });
+
+  container.appendChild(detailsDiv);
+  saveExamAttempt(currentScore, currentExam.length, pct);
+}
+
+/* Save attempt into localStorage */
+function saveExamAttempt(score, total, pct) {
+  const history = JSON.parse(localStorage.getItem('examHistory') || '[]');
+  history.push({
+    date: new Date().toLocaleString(),
+    score,
+    total,
+    pct,
+    questions: currentExam.map((q, idx) => {
+      const userAnswer = userAnswers[idx];
+      return {
+        number: idx+1,
+        question: q.question,
+        options: q.options,
+        correctAnswerIdx: q.correctAnswerIdx,
+        correctAnswerText: q.correctAnswerIdx >= 0 ? q.options[q.correctAnswerIdx] : '(Not detected)',
+        userAnswerIdx: userAnswer ? userAnswer.selectedIdx : -1,
+        userAnswerText: userAnswer && userAnswer.selectedIdx >= 0 ? q.options[userAnswer.selectedIdx] : '(Not answered)',
+        isCorrect: userAnswer ? userAnswer.isCorrect : false,
+        feedback: q.feedback || '',
+        isAlternative: q.isAlternative || false,
+        sourceQuestion: q.sourceQuestion || null
+      };
+    })
+  });
+  localStorage.setItem('examHistory', JSON.stringify(history));
+  renderHistory();
+}
+
+/* History rendering (safe insertion) */
+function renderHistory() {
+  const history = JSON.parse(localStorage.getItem('examHistory') || '[]');
+  const container = $('historyContent');
+  if (!history || history.length === 0) {
+    container.innerHTML = '<div class="empty-state">No exam attempts yet.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  history.forEach((attempt, attemptIdx) => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    const btn = document.createElement('button');
+    btn.className = 'accordion-button';
+    btn.textContent = `Attempt ${history.length - attemptIdx} – ${attempt.date} – ${attempt.pct}%`;
+    item.appendChild(btn);
+
+    const panel = document.createElement('div');
+    panel.className = 'accordion-panel';
+    const scoreText = document.createElement('div');
+    scoreText.style.fontWeight = 'bold';
+    scoreText.style.marginBottom = '15px';
+    scoreText.textContent = `Score: ${attempt.score}/${attempt.total} (${attempt.pct}%)`;
+    panel.appendChild(scoreText);
+
+    attempt.questions.forEach(q => {
+      const qDiv = document.createElement('div');
+      qDiv.style.marginBottom = '15px';
+      const qText = document.createElement('p');
+      qText.style.fontWeight = 'bold';
+      qText.textContent = `Q${q.number}: ${q.question}` + (q.isAlternative ? ' (alternative)' : '');
+      qDiv.appendChild(qText);
+
+      if (q.sourceQuestion) {
+        const src = document.createElement('div');
+        src.className = 'small';
+        src.textContent = `Source: ${q.sourceQuestion}`;
+        qDiv.appendChild(src);
+      }
+
+      const userAnswerText = document.createElement('p');
+      userAnswerText.style.marginBottom = '5px';
+      userAnswerText.style.color = q.isCorrect ? '#27ae60' : '#e74c3c';
+      userAnswerText.style.fontWeight = 'bold';
+      userAnswerText.textContent = `Your answer: ${q.userAnswerText} ${q.isCorrect ? '✓' : '✗'}`;
+      qDiv.appendChild(userAnswerText);
+
+      const ansText = document.createElement('p');
+      ansText.className = 'feedback-correct';
+      ansText.textContent = `Correct: ${q.correctAnswerText}`;
+      qDiv.appendChild(ansText);
+
+      if (q.feedback) {
+        const feedDiv = document.createElement('div');
+        feedDiv.className = 'feedback-text';
+        const strong = document.createElement('strong'); strong.textContent = 'Explanation: ';
+        feedDiv.appendChild(strong);
+        feedDiv.appendChild(document.createTextNode(q.feedback));
+        qDiv.appendChild(feedDiv);
+      }
+      panel.appendChild(qDiv);
+    });
+
+    btn.addEventListener('click', () => panel.classList.toggle('show'));
+    item.appendChild(panel);
+    container.appendChild(item);
+  });
+}
+
+/* NAV handlers */
+document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => show(btn.getAttribute('data-section'))));
+
+/* Show a section */
+function show(section) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  $(section).classList.add('active');
+  document.querySelector(`[data-section="${section}"]`).classList.add('active');
+}
+
+/* Shuffle helpers */
+function shuffle(array) {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+function shuffleOptions(options, correctAnswerIdx) {
+  if (correctAnswerIdx < 0) return { shuffledOptions: shuffle(options), correctAnswerNewIdx: -1 };
+  const indexMap = Array.from({ length: options.length }, (_, i) => i);
+  const shuffledMap = shuffle(indexMap);
+  const shuffledOptions = shuffledMap.map(i => options[i]);
+  const correctAnswerNewIdx = shuffledMap.indexOf(correctAnswerIdx);
+  return { shuffledOptions, correctAnswerNewIdx };
+}
+
+/* Initialize UI on load */
+document.addEventListener('DOMContentLoaded', () => {
+  renderHistory();
+  renderProcessedFiles();
+});
+</script>
+</body>
+</html>
